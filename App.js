@@ -1,10 +1,18 @@
-import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { StyleSheet, Text, View, Button } from "react-native";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Button,
+  TextInput,
+  Image,
+  ScrollView,
+} from "react-native";
 import { makeRedirectUri, useAuthRequest } from "expo-auth-session";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as SecureStore from "expo-secure-store";
+import { Formik } from "formik";
 
 async function saveToken(val) {
   await SecureStore.setItemAsync("userToken", val);
@@ -157,7 +165,7 @@ export default function App({ navigation }) {
       },
       signOut: () => dispatch({ type: "SIGN_OUT" }),
     }),
-    []
+    [response]
   );
 
   function LoginScreen() {
@@ -176,11 +184,57 @@ export default function App({ navigation }) {
       </View>
     );
   }
-  function HomeScreen() {
+  function HomeScreen({ navigation }) {
     const { signOut } = React.useContext(AuthContext);
+
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <Text>Home Screen</Text>
+        <Formik
+          initialValues={{ username: "" }}
+          onSubmit={async (values) => {
+            console.log(values.username);
+            const userToken = await SecureStore.getItemAsync("userToken");
+            console.log({ userToken });
+            const response3 = await fetch(
+              `https://api.intra.42.fr/v2/users/${values.username.toLowerCase()}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${userToken}`,
+                },
+              }
+            );
+            const userInfo1 = await response3.json();
+            console.log({ userInfo1 });
+            const response4 = await fetch(
+              `https://api.intra.42.fr/v2/skills/${userInfo1.id}`,
+              {
+                method: "GET",
+                headers: {
+                  Authorization: `Bearer ${userToken}`,
+                },
+              }
+            );
+            const userInfo2 = await response4.json();
+            console.log({ userInfo2 });
+            navigation.navigate("Profile", { userInfo1 });
+          }}
+        >
+          {({ handleChange, handleBlur, handleSubmit, values }) => (
+            <View
+              style={{
+                backgroundColor: "white",
+              }}
+            >
+              <TextInput
+                onChangeText={handleChange("username")}
+                onBlur={handleBlur("username")}
+                value={values.username}
+              />
+              <Button onPress={handleSubmit} title="Submit" />
+            </View>
+          )}
+        </Formik>
         <Button
           title="signOut"
           onPress={() => {
@@ -190,6 +244,75 @@ export default function App({ navigation }) {
       </View>
     );
   }
+  function ProfileScreen({ route, navigation }) {
+    console.log("route params", route.params);
+    const {
+      login,
+      email,
+      location,
+      wallet,
+      image_url,
+      cursus_users,
+      projects_users,
+    } = route.params.userInfo1;
+    console.log(cursus_users);
+    return (
+      <ScrollView>
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "flex-start",
+          }}
+        >
+          <Image
+            source={{
+              uri: image_url,
+            }}
+            style={{ width: 100, height: 100 }}
+          />
+
+          <Text>login : {login}</Text>
+          <Text>email : {email}</Text>
+          <Text>location : {location === null ? "Unavailable" : location}</Text>
+          <Text>wallet : {wallet}</Text>
+        </View>
+
+        <View
+          style={{
+            flex: 2,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 30,
+          }}
+        >
+          {cursus_users[2].skills.map(({ name, level, id }) => (
+            <Text key={id}>
+              {" "}
+              {name} {level}{" "}
+            </Text>
+          ))}
+        </View>
+        <View
+          style={{
+            flex: 3,
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 30,
+          }}
+        >
+          {projects_users.map(
+            ({ status, id, project }) =>
+              status === "finished" && (
+                <Text key={id}>
+                  {project.name} {status}
+                </Text>
+              )
+          )}
+        </View>
+      </ScrollView>
+    );
+  }
   return (
     <NavigationContainer>
       <AuthContext.Provider value={authContext}>
@@ -197,7 +320,10 @@ export default function App({ navigation }) {
           {state.userToken == null ? (
             <Stack.Screen name="SignIn" component={LoginScreen} />
           ) : (
-            <Stack.Screen name="Home" component={HomeScreen} />
+            <>
+              <Stack.Screen name="Home" component={HomeScreen} />
+              <Stack.Screen name="Profile" component={ProfileScreen} />
+            </>
           )}
         </Stack.Navigator>
       </AuthContext.Provider>
