@@ -12,10 +12,15 @@ import { makeRedirectUri, useAuthRequest } from "expo-auth-session";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as SecureStore from "expo-secure-store";
+import * as AuthSession from "expo-auth-session";
+
 import { Formik } from "formik";
 
 async function saveToken(val) {
   await SecureStore.setItemAsync("userToken", val);
+}
+async function saveRefreshToken(val) {
+  await SecureStore.setItemAsync("refreshToken", val);
 }
 
 const discovery = {
@@ -147,7 +152,10 @@ export default function App({ navigation }) {
           console.log({ authInfo });
           if (authInfo.access_token) {
             saveToken(authInfo.access_token);
+            saveRefreshToken(authInfo.refresh_token);
+
             console.log(authInfo.access_token);
+            console.log(authInfo.refresh_token);
             const response2 = await fetch(`https://api.intra.42.fr/v2/me`, {
               method: "GET",
               headers: {
@@ -186,6 +194,7 @@ export default function App({ navigation }) {
   }
   function HomeScreen({ navigation }) {
     const { signOut } = React.useContext(AuthContext);
+    const [disableButton, setDisableButton] = React.useState(false);
 
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
@@ -206,41 +215,60 @@ export default function App({ navigation }) {
             );
             const userInfo1 = await response3.json();
             console.log({ userInfo1 });
-            const response4 = await fetch(
-              `https://api.intra.42.fr/v2/skills/${userInfo1.id}`,
-              {
-                method: "GET",
-                headers: {
-                  Authorization: `Bearer ${userToken}`,
-                },
-              }
-            );
-            const userInfo2 = await response4.json();
-            console.log({ userInfo2 });
+            if (userInfo1.message === "The access token expired") {
+              const refreshToken = await SecureStore.getItemAsync(
+                "refreshToken"
+              );
+              const response = await fetch(
+                `https://api.intra.42.fr/oauth/token?grant_type=refresh_token&client_id=bd04f864db3a4ee1dae16cedca4d86d4fa38c5cf93674bcc4c5d3af2025f05a9&client_secret=615c78cb01d8c6dd540e701050da77524bb2509bb92e9bdccc5442569561bb8b&refresh_token=${refreshToken}&redirect_uri=exp:\/\/10.11.6.10:19000`,
+                {
+                  method: "POST",
+                }
+              );
+              const newAuthInfo = await response.json();
+              console.log({ newAuthInfo });
+            }
             navigation.navigate("Profile", { userInfo1 });
+            setDisableButton(false);
           }}
         >
           {({ handleChange, handleBlur, handleSubmit, values }) => (
-            <View
-              style={{
-                backgroundColor: "white",
-              }}
-            >
+            <View>
               <TextInput
+                style={{
+                  backgroundColor: "white",
+                  margin: 10,
+                  height: 50,
+                  width: 200,
+                  fontSize: 17,
+                }}
                 onChangeText={handleChange("username")}
                 onBlur={handleBlur("username")}
                 value={values.username}
+                maxLength={20}
+                mode="outlined"
               />
-              <Button onPress={handleSubmit} title="Submit" />
+              <Button
+                disabled={
+                  !values.username ||
+                  !/^[a-zA-Z\s-]+$/.test(values.username) ||
+                  disableButton
+                }
+                onPress={() => {
+                  handleSubmit();
+                  setDisableButton(true);
+                }}
+                title="Search"
+              />
+              <Button
+                title="signOut"
+                onPress={() => {
+                  signOut();
+                }}
+              />
             </View>
           )}
         </Formik>
-        <Button
-          title="signOut"
-          onPress={() => {
-            signOut();
-          }}
-        />
       </View>
     );
   }
@@ -256,62 +284,81 @@ export default function App({ navigation }) {
       projects_users,
     } = route.params.userInfo1;
     console.log(cursus_users);
-    return (
-      <ScrollView>
-        <View
-          style={{
-            flex: 1,
-            alignItems: "center",
-            justifyContent: "flex-start",
-          }}
-        >
-          <Image
-            source={{
-              uri: image_url,
+
+    if (
+      !Object.keys(route.params.userInfo1).length ||
+      !login ||
+      !email ||
+      !location ||
+      !wallet ||
+      !image_url ||
+      !cursus_users ||
+      !projects_users
+    ) {
+      return (
+        <View>
+          <Text>User not found or has not enough data</Text>
+        </View>
+      );
+    } else
+      return (
+        <ScrollView>
+          <View
+            style={{
+              flex: 1,
+              alignItems: "center",
+              justifyContent: "flex-start",
             }}
-            style={{ width: 100, height: 100 }}
-          />
+          >
+            <Image
+              source={{
+                uri: image_url,
+              }}
+              style={{ width: 100, height: 100 }}
+            />
 
-          <Text>login : {login}</Text>
-          <Text>email : {email}</Text>
-          <Text>location : {location === null ? "Unavailable" : location}</Text>
-          <Text>wallet : {wallet}</Text>
-        </View>
-
-        <View
-          style={{
-            flex: 2,
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 30,
-          }}
-        >
-          {cursus_users[2].skills.map(({ name, level, id }) => (
-            <Text key={id}>
-              {" "}
-              {name} {level}{" "}
+            <Text>login : {login}</Text>
+            <Text>email : {email}</Text>
+            <Text>
+              location : {location === null ? "Unavailable" : location}
             </Text>
-          ))}
-        </View>
-        <View
-          style={{
-            flex: 3,
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 30,
-          }}
-        >
-          {projects_users.map(
-            ({ status, id, project }) =>
-              status === "finished" && (
-                <Text key={id}>
-                  {project.name} {status}
-                </Text>
-              )
-          )}
-        </View>
-      </ScrollView>
-    );
+            <Text>wallet : {wallet}</Text>
+          </View>
+
+          <View
+            style={{
+              flex: 2,
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 30,
+            }}
+          >
+            {cursus_users[2].skills.map(({ name, level, id }) => (
+              <Text key={id}>
+                {" "}
+                {name} {level}{" "}
+              </Text>
+            ))}
+          </View>
+          <View
+            style={{
+              flex: 3,
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 30,
+            }}
+          >
+            {projects_users.map(
+              ({ status, id, project }) =>
+                status === "finished" && (
+                  <Text key={id}>
+                    {project.name} {status}
+                  </Text>
+                )
+            )}
+          </View>
+        </ScrollView>
+      );
   }
   return (
     <NavigationContainer>
