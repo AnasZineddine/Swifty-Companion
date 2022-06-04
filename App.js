@@ -195,6 +195,7 @@ export default function App({ navigation }) {
   function HomeScreen({ navigation }) {
     const { signOut } = React.useContext(AuthContext);
     const [disableButton, setDisableButton] = React.useState(false);
+    let userInfo1;
 
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
@@ -215,7 +216,11 @@ export default function App({ navigation }) {
             );
             const userInfo1 = await response3.json();
             console.log({ userInfo1 });
-            if (userInfo1.message === "The access token expired") {
+            if (
+              userInfo1.message === "The access token expired" ||
+              userInfo1.message === "The access token was revoked"
+            ) {
+              console.log("NNNNNNNNNEEEEEEWWWW    TOOOOOOOOOKEEEEEEEENNNN");
               const refreshToken = await SecureStore.getItemAsync(
                 "refreshToken"
               );
@@ -226,6 +231,20 @@ export default function App({ navigation }) {
                 }
               );
               const newAuthInfo = await response.json();
+              saveToken(newAuthInfo.access_token);
+              saveRefreshToken(newAuthInfo.refresh_token);
+              const response3 = await fetch(
+                `https://api.intra.42.fr/v2/users/${values.username.toLowerCase()}`,
+                {
+                  method: "GET",
+                  headers: {
+                    Authorization: `Bearer ${newAuthInfo.access_token}`,
+                  },
+                }
+              );
+              const userInfo1 = await response3.json();
+
+              navigation.navigate("Profile", { userInfo1 });
               console.log({ newAuthInfo });
             }
             navigation.navigate("Profile", { userInfo1 });
@@ -289,7 +308,6 @@ export default function App({ navigation }) {
       !Object.keys(route.params.userInfo1).length ||
       !login ||
       !email ||
-      !location ||
       !wallet ||
       !image_url ||
       !cursus_users ||
